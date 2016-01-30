@@ -8,6 +8,8 @@ var bodyParser = require('body-parser');
 var routes = require('./routes/index');
 var users = require('./routes/users');
 
+var sentiment = require('./modules/sentiment');
+
 var app = express();
 
 // view engine setup
@@ -21,6 +23,11 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/test', function (req, res) {
+  console.log('get test');
+  res.render('sentimentTest', {test: sentiment.getSentiments([])});
+});
 
 app.use('/', routes);
 app.use('/users', users);

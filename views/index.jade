@@ -1,5 +1,8 @@
 extends layout
 
+block head
+  script(type='application/json')
+    !{wordJson}
+
 block content
-  h1= title
-  p Welcome to #{title}
+  !{wordJson}

@@ -25,8 +25,10 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/test', function (req, res) {
-  console.log('get test');
-  res.render('sentimentTest', {test: sentiment.getSentiments([])});
+  sentiment.getSentiments(req.query.line, function (result) {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({test: result}));
+  });
 });
 
 app.use('/', routes);

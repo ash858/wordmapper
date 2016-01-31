@@ -15,22 +15,7 @@
     "request": "^2.69.0",
     "serve-favicon": "~2.3.0"
   },
-<<<<<<< HEAD
   "devDependencies": {
     "properties-reader": "0.0.15"
   }
-=======
-  "description": "Spotify Hackathon - Jan 30, 2016",
-  "main": "app.js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ash858/meowmeowspotifyhack.git"
-  },
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/ash858/meowmeowspotifyhack/issues"
-  },
-  "homepage": "https://github.com/ash858/meowmeowspotifyhack"
->>>>>>> 1312157... Added word mapping module
 }

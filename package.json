@@ -13,7 +13,8 @@
     "jade": "^1.11.0",
     "morgan": "~1.6.1",
     "request": "^2.69.0",
-    "serve-favicon": "~2.3.0"
+    "serve-favicon": "~2.3.0",
+    "winston": "2.1.1"
   },
   "devDependencies": {
     "properties-reader": "0.0.15"

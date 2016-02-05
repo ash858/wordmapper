@@ -1,3 +1,5 @@
+"use strict";
+
 var DEFAULT_COLOR = "#333";
 
 function Position(x, y) {
@@ -80,45 +82,46 @@ WordGrid.prototype.getBoundingBoxArea = function() {
  */
 WordGrid.prototype.fits = function(originNode, originIdx, targetText, targetIdx, targetLtr) {
   var len = targetText.length;
-  var start = this.wordPositions[originNode.id].move(originIdx, originNode.ltr).move(targetIdx * -1, targetLtr);
+  var start = this.wordPositions[originNode.id].move(originIdx, originNode.ltr)
+                                               .move(targetIdx * -1, targetLtr);
   var pos = start;
   if (len === 1 && this.grid[pos] === targetText) {
     return start;
   }
   else {
-    for (var i = 1; i < len; i++) {
-      if (this.grid.hasOwnProperty(pos) && this.grid[pos] != targetText[i]) return false;
+    for (var i = 0; i < len; i++) {
+      if (this.grid.hasOwnProperty(pos) && this.grid[pos] !== targetText[i]) return false;
       pos = pos.next(targetLtr); 
     }  
   }
   return start;
 };
 
-WordGrid.prototype.addNode = function(node, startPosition) {
-  this.wordPositions[node.id] = startPosition;
-  var len =  node.text.length;
-  var chars = node.text.split('');
-  var pos = startPosition;
+WordGrid.prototype.addNode = function(node, startPos) {
+  this.wordPositions[node.id] = startPos;
+  var len = node.text.length;
+  var text = node.text;
+  var pos = startPos;
   for (var i = 0; i < len; i++) {
-    this.grid[pos] = chars[i];
+    this.grid[pos] = text[i];
     if (i != len - 1) {
       pos = pos.next(node.ltr);  
     }    
   }
-  var endPosition = pos;
-  this.updateBBox(startPosition, endPosition);
+  var endPos = pos;
+  this.updateBBox(startPos, endPos);
 };
 
-WordGrid.prototype.updateBBox = function(startPosition, endPosition) {
-  if (this.topLeft == null) this.topLeft = startPosition;
+WordGrid.prototype.updateBBox = function(startPos, endPos) {
+  if (this.topLeft == null) this.topLeft = new Position(startPos.x, startPos.y);
   else {
-    this.topLeft.x = Math.min(this.topLeft.x, startPosition.x);
-    this.topLeft.y = Math.min(this.topLeft.y, startPosition.y);
+    this.topLeft.x = Math.min(this.topLeft.x, startPos.x);
+    this.topLeft.y = Math.min(this.topLeft.y, startPos.y);
   }
-  if (this.bottomRight == null) this.bottomRight = endPosition;
+  if (this.bottomRight == null) this.bottomRight = new Position(endPos.x, endPos.y);
   else {
-    this.bottomRight.x = Math.max(this.bottomRight.x, endPosition.x);
-    this.bottomRight.y = Math.max(this.bottomRight.y, endPosition.y); 
+    this.bottomRight.x = Math.max(this.bottomRight.x, endPos.x);
+    this.bottomRight.y = Math.max(this.bottomRight.y, endPos.y); 
   }
 }
 
@@ -144,8 +147,8 @@ Block.prototype.findJoin = function(node) {
   var len = this.nodes.length;
   for (var nodeIdx = 0; nodeIdx < len; nodeIdx++) {
     var originNode = this.nodes[nodeIdx];
-    var originText = originNode.text.split('');
-    var targetText = node.text.split('');
+    var originText = originNode.text;
+    var targetText = node.text;
     for (var targetTextIdx in targetText) {
       for (var originTextIdx in originText) {
         // Find a spot where the characters match up
@@ -153,7 +156,7 @@ Block.prototype.findJoin = function(node) {
           // Check if the origin character has any existing connections at that position
           if (!originNode.connections[originTextIdx]) {
             var ltr = !originNode.ltr;
-            var startPos = this.grid.fits(originNode, originTextIdx, node.text, targetTextIdx, ltr);
+            var startPos = this.grid.fits(originNode, originTextIdx, targetText, targetTextIdx, ltr);
             if (startPos) {
               return {
                 'originNode': originNode,
@@ -197,44 +200,81 @@ function WordNode(id, text) {
   this.ltr = true;
 };
 
-function WordMapper(lyricText) {
-  var cleanWord = function(word) {
-    return word.trim();
-  }
-  this.words = lyricText.split(' ').map(function(x) {
-    return cleanWord(x);
-  });
+function WordMapper(words) {
+  this.words = words;
   this.blocks = [];
-  this.currBlock = null;
+  this.buildMap();
 }
 
-WordMapper.prototype.getMap = function() {
-  this.currBlock = new Block();
-  this.blocks.push(this.currBlock);
+WordMapper.prototype.buildMap = function() {
+  var currBlock = new Block();
+  this.blocks.push(currBlock);
   var wordsLen = this.words.length;
   for (var i = 0; i < wordsLen; i++) {
     var word = this.words[i];
     var node = new WordNode(i, word);
-    if (this.currBlock.isEmpty()) {
-      this.currBlock.addNode(node);
+    if (currBlock.isEmpty()) {
+      currBlock.addNode(node);
     }
     else {
-      var joinPoint = this.currBlock.findJoin(node);
+      var joinPoint = currBlock.findJoin(node);      
       if (joinPoint) {
-        this.currBlock.joinNode(node, joinPoint);
+        currBlock.joinNode(node, joinPoint);
       }
       else {
-        this.currBlock = new Block();
-        this.blocks.push(this.currBlock);
-        this.currBlock.addNode(node);
+        currBlock = new Block();
+        this.blocks.push(currBlock);
+        currBlock.addNode(node);
       }
-    }  
+    }      
   }
   return this.blocks;
 };
 
+function WordMapGenerator(lyricText) {
+  var cleanWords = function(word) {
+    return word.trim().toLowerCase().replace(/[,.]/, '');
+  }
+  this.words = lyricText.split(' ').map(cleanWords);
+  this.wordMapper = new WordMapper(this.words);
+}
 
-var wordMapper = new WordMapper("till i collapse im spilling these raps long as you feel it till the day that i die you'll never say");
-console.log(JSON.stringify(wordMapper.getMap()));
+function WordMapRenderer(wordMap) {
+  this.wordMap = wordMap;
+} 
+
+WordMapRenderer.prototype.blockSize = function() {
+  return this.wordMap.blocks.length;
+};
+
+WordMapRenderer.prototype.renderBlocks = function() {
+  var len = this.blockSize();
+  for (var i = 0; i < len; i++) {
+    this.renderBlock(i);
+  }
+};
+
+WordMapRenderer.prototype.renderBlock = function(i) {
+  var grid = this.wordMap.blocks[i].grid;
+  var tl = grid.topLeft;
+  var br = grid.bottomRight;
+  var height = br.y - tl.y;
+  var width = br.x - tl.x; 
+  for (var y = 0; y <= height; y++) {
+    var pos = new Position(tl.x, tl.y + y);
+    var row = '';
+    for (var x = 0; x <= width; x++) {
+      pos.x = tl.x + x;
+      row += grid.grid[pos] || ' ';
+    }
+    console.log(row);
+  }
+  console.log('-----------');
+};
+
+var wordMapper = new WordMapGenerator("We open with the vultures, kissing the cannibals Sure I get lonely, when I'm the only Only human in the heaving heat of the animals Bitter brown salt, stinging on my tongue and I I will not waiver, heart will not wait its turn It will beat, it will burn, burn, burn your love into the ground With the lips of another 'Til you get lonely, sure I get lonely, sometimes").wordMapper;
+var wordRenderer = new WordMapRenderer(wordMapper);
+
+wordRenderer.renderBlocks();
 
 module.exports = WordMapper;

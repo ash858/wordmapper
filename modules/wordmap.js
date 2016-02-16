@@ -1,7 +1,12 @@
 "use strict";
 
-var DEFAULT_COLOR = "#333";
+const Combinatorics = require('js-combinatorics');
+const fs = require('fs');
+const Promise = require('promise');
 
+/** 
+ * Position
+ */
 function Position(x, y) {
   this.x = parseInt(x);
   this.y = parseInt(y);
@@ -49,7 +54,73 @@ Position.prototype.toString = function() {
   return 'x:' + this.x + 'y:' + this.y;
 };
 
+/** 
+ * WordTrieNode
+ */
+function WordTrieNode(character) {
+  this.character = character;
+  this.nodes = {};
+  this.marked = false;
+}
 
+WordTrieNode.prototype.addChar = function(character) {
+  if (!this.nodes[character]) {
+    var node = new WordTrieNode(character);
+    this.nodes[character] = node;
+  }
+  return this.nodes[character];
+}
+
+/** 
+ * WordTrie
+ */
+function DictionaryTrie(dictionaryFile) {
+  this.dictionaryFile = dictionaryFile;
+  this.root = new WordTrieNode(null);
+  this.built = false;
+  this.load();
+}
+
+DictionaryTrie.prototype.addWord = function(root, word) {
+  var characters = word.split('');
+  var trieNode = root;
+  for (var i = 0; i < characters.length; i++) {
+    trieNode = trieNode.addChar(characters[i]);
+  }
+  trieNode.marked = true;
+};
+
+DictionaryTrie.prototype.load = function() {
+  var self = this;
+  return new Promise(function (resolve, reject) {
+    if (self.built) resolve();
+    else {
+      fs.readFile(self.dictionaryFile, 'utf8', (err, data) => {
+        if (err) reject(err);
+        data.split('\n').forEach(function (word) {
+          self.addWord(self.root, word);
+        });
+        self.built = true;
+        resolve(self);
+      }); 
+    }
+  });
+};
+
+DictionaryTrie.prototype.hasWord = function(word) {
+  var node = this.root;
+  for (var i = 0; i < word.length; i++) {
+    node = node.nodes[word[i]]; 
+    if (!node) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * WordGrid
+ */
 function WordGrid() {
   this.wordPositions = {};
   this.grid = {};
@@ -63,16 +134,19 @@ WordGrid.prototype.getBoundingBox = function() {
 };
 
 WordGrid.prototype.getBoundingBoxArea = function() {
-  var bBox = this.getBoundingBox;
+  var bBox = this.getBoundingBox();
   if (bBox) {
-    return (bBox.botRight.x - bBox.topLeft.x) * (bBox.botRight.y - bBox.topLeft.y); 
+    return (bBox.botRight.x - bBox.topLeft.x + 1) * (bBox.botRight.y - bBox.topLeft.y + 1); 
   }
   return 0;
 };
 
 /**
+ * fits
+ *
  * Check the word grid to see if the given word can be placed such that it doesn't
  * overlap with any mismatching characters.
+ * 
  * @param word (string) - The word to check
  * @param joinPos (Position) - The position where the join occurs
  * @param wordIdx (int) - The word's char index where the join occurs
@@ -126,6 +200,8 @@ WordGrid.prototype.updateBBox = function(startPos, endPos) {
 }
 
 /**
+ * Block
+ *
  * A block is a collection of word nodes that are connected with 
  * each other.
  */
@@ -182,6 +258,13 @@ Block.prototype.joinNode = function(wordNode, joinPoint) {
   return wordNode.connections[joinPoint.targetIdx];
 }
 
+Block.prototype.getBoundingBoxArea = function() {
+  return this.grid.getBoundingBoxArea();
+}
+
+/**
+ * WordNodeConnection
+ */
 function WordNodeConnection(joinNode, joinPos, selfPos) {
   this.joinNodeId = joinNode.id;
   this.joinPos = joinPos;
@@ -189,17 +272,21 @@ function WordNodeConnection(joinNode, joinPos, selfPos) {
 };
 
 /**
+ * WordNode
+ *
  * A word node represents the text of a single word, its timing 
  * information, and how it connects to another node. 
  */
 function WordNode(id, text) {
   this.id = id;
   this.text = text;
-  this.color = DEFAULT_COLOR;
   this.connections = {};
   this.ltr = true;
 };
 
+/**
+ * WordMapper 
+ */
 function WordMapper(words) {
   this.words = words;
   this.blocks = [];
@@ -231,14 +318,59 @@ WordMapper.prototype.buildMap = function() {
   return this.blocks;
 };
 
+WordMapper.prototype.getTotalArea = function() {
+  return this.blocks.map(function(b) {
+    return b.getBoundingBoxArea();
+  }).reduce(function(a,b) {
+    return a + b;
+  }, 0);
+}
+
 function WordMapGenerator(lyricText) {
   var cleanWords = function(word) {
     return word.trim().toLowerCase().replace(/[,.]/, '');
   }
   this.words = lyricText.split(' ').map(cleanWords);
-  this.wordMapper = new WordMapper(this.words);
+  this.wordsPermutation();
 }
 
+WordMapGenerator.prototype.wordsPermutation = function() {
+  var len = this.words.length;
+  var indicies = [];
+  for (var i = 0; i < len; i++) {
+    indicies.push(i);
+  }
+  var perms = Combinatorics.permutation(indicies),
+      perm = null,
+      count = 0,
+      minBlocks = Number.MAX_VALUE,
+      minArea = Number.MAX_VALUE,
+      candidate = null;
+  while ((perm = perms.next()) && count < 200000) {
+    var wordPerm = perm.map(function(i) { 
+      return this.words[i]; 
+    }.bind(this));
+    //console.log(wordPerm);
+    var mapper = new WordMapper(wordPerm);
+    if (mapper.blocks.length <= minBlocks) {
+      var totalArea = mapper.getTotalArea();
+      if (mapper.blocks.length < minBlocks || totalArea < minArea) {
+        candidate = mapper;
+        minArea = totalArea;
+      }      
+      minBlocks = mapper.blocks.length;
+    }
+    count++;
+  }
+  //console.log(minBlocks);
+  //console.log(minArea);
+  new WordMapRenderer(candidate).renderBlocks();
+  console.log("Tried " + count + " variations.");
+};
+
+/**
+ * WordMapRenderer 
+ */
 function WordMapRenderer(wordMap) {
   this.wordMap = wordMap;
 } 
@@ -270,11 +402,16 @@ WordMapRenderer.prototype.renderBlock = function(i) {
     console.log(row);
   }
   console.log('-----------');
+ // console.log(this.wordMap.blocks[i].grid.getBoundingBoxArea());
+  console.log('-----------');
+
 };
 
-var wordMapper = new WordMapGenerator("We open with the vultures, kissing the cannibals Sure I get lonely, when I'm the only Only human in the heaving heat of the animals Bitter brown salt, stinging on my tongue and I I will not waiver, heart will not wait its turn It will beat, it will burn, burn, burn your love into the ground With the lips of another 'Til you get lonely, sure I get lonely, sometimes").wordMapper;
-var wordRenderer = new WordMapRenderer(wordMapper);
+//var wordMapper = new WordMapGenerator("I never could see the waves that roll me under").wordMapper;
+//var wordRenderer = new WordMapRenderer(wordMapper);
 
-wordRenderer.renderBlocks();
+//wordRenderer.renderBlocks();
+
+var dict = new DictionaryTrie('/usr/share/dict/words');
 
 module.exports = WordMapper;
